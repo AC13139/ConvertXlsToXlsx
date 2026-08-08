@@ -13,7 +13,9 @@ class ConversionResult:
 
     Created regardless of success so callers can iterate over batch results
     uniformly. On failure, ``dst`` may not exist on disk and ``return_code``
-    will be non-zero.
+    will be non-zero. A result may also be *skipped* (``skipped=True``) when
+    the orchestrator deliberately chose not to convert — e.g. an output that
+    already exists during a resume run; skipped results read as ``ok``.
     """
 
     src: Path
@@ -23,6 +25,7 @@ class ConversionResult:
     return_code: int
     stdout: str = ""
     stderr: str = ""
+    skipped: bool = False
 
     @property
     def ok(self) -> bool:

@@ -18,6 +18,7 @@ from .config import (
 )
 from .converters import REGISTRY, ConversionResult, Converter
 from .exceptions import (
+    ConvertXlsError,
     InvalidPathError,
     NoConverterAvailableError,
 )
@@ -45,6 +46,45 @@ def _ensure_within(parent: Path, candidate: Path) -> None:
         raise InvalidPathError(
             f"destination {candidate!s} escapes the dst_dir root {parent!s}"
         ) from exc
+
+
+def _is_office_lock_file(name: str) -> bool:
+    """True for transient office sidecar files that are never real documents.
+
+    Covers the MS Excel owner/temp file prefix (``~$``) and the LibreOffice
+    lock-file prefix (``.~lock.``). These appear next to real spreadsheets
+    while they are open; converting them is meaningless — ``soffice`` exits
+    0 but writes no output.
+    """
+    return name.startswith("~$") or name.startswith(".~lock.")
+
+
+def _skipped_result(src: Path, dst: Path, backend: str) -> ConversionResult:
+    """Build a success result for a file deliberately left unconverted.
+
+    Used for resume runs: when ``overwrite=False`` and the destination already
+    exists, the file is skipped rather than erroring out. ``return_code=0`` so
+    the result reads as ``ok`` and does not fail the batch.
+    """
+    return ConversionResult(
+        src=src, dst=dst, backend=backend, duration_ms=0, return_code=0, skipped=True
+    )
+
+
+def _failed_result(src: Path, dst: Path, backend: str, exc: ConvertXlsError) -> ConversionResult:
+    """Build a failure result from a per-file ``ConvertXlsError``.
+
+    Lets a batch record the failure and keep going instead of aborting.
+    ``return_code`` is carried through when the exception exposes one (e.g.
+    :class:`ConversionFailedError`); otherwise ``-1`` means "did not run".
+    """
+    rc = getattr(exc, "return_code", -1)
+    if not isinstance(rc, int):
+        rc = -1
+    stderr = getattr(exc, "stderr", None) or str(exc)
+    return ConversionResult(
+        src=src, dst=dst, backend=backend, duration_ms=0, return_code=rc, stderr=stderr
+    )
 
 
 def resolve_backend(name: str | None = None) -> Converter:
@@ -171,18 +211,26 @@ def convert_many(
             raise InvalidPathError(f"destination already exists and overwrite=False: {target!s}")
         return target
 
+    def _convert_safe(src: Path, dst: Path) -> ConversionResult:
+        # A runtime conversion failure is recorded as a failed result so the
+        # rest of the batch keeps going; the caller reports it at the end.
+        try:
+            return converter.convert(src, dst, overwrite=overwrite)
+        except ConvertXlsError as exc:
+            _LOGGER.debug("failed: %s: %s", src, exc)
+            return _failed_result(src, dst, converter.name, exc)
+
     if workers <= 1:
         results: list[ConversionResult] = []
         for src in src_paths:
             dst = _resolve_destination(src)
-            results.append(converter.convert(src, dst, overwrite=overwrite))
+            results.append(_convert_safe(src, dst))
         return results
 
     results = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
         future_to_src = {
-            pool.submit(converter.convert, src, _resolve_destination(src), overwrite=overwrite): src
-            for src in src_paths
+            pool.submit(_convert_safe, src, _resolve_destination(src)): src for src in src_paths
         }
         for fut in as_completed(future_to_src):
             results.append(fut.result())
@@ -199,7 +247,9 @@ def discover_xls_files(src_dir: str | Path) -> DiscoveryResult:
 
     Symlinks are *not* followed, and the result is lex-sorted for
     reproducibility. ``.xlsx`` files are excluded even when named with a
-    ``.xls`` suffix.
+    ``.xls`` suffix. Office lock/temp sidecars (``~$...`` Excel owner files,
+    ``.~lock...`` LibreOffice lock files) are skipped — they are not real
+    spreadsheets.
     """
     root = _coerce_path(src_dir).resolve()
     if not root.exists() or not root.is_dir():
@@ -215,6 +265,8 @@ def discover_xls_files(src_dir: str | Path) -> DiscoveryResult:
             continue
         # Defence in depth — never pick up .xlsx via a weird suffix
         if path.name.lower().endswith(".xlsx"):
+            continue
+        if _is_office_lock_file(path.name):
             continue
         rel = path.relative_to(root).as_posix()
         found.append((str(path), rel))
@@ -252,19 +304,14 @@ def convert_directory(
         return []
 
     if dst_dir is None:
-        return convert_many(
-            [Path(abs_path) for abs_path, _ in discovered.files],
-            out_dir=src_root,
-            backend=backend,
-            overwrite=overwrite,
-            workers=workers,
-            verbose=verbose,
-        )
-
-    # Mirror the source tree under ``dst_dir`` with the source folder's
-    # basename preserved as the top-level directory — same as ``rsync src dst/``.
-    dst_root = (_coerce_path(dst_dir) / src_root.name).resolve()
-    dst_root.mkdir(parents=True, exist_ok=True)
+        # In-place: outputs are written flat next to the sources.
+        dst_root = src_root
+    else:
+        # Mirror the source tree under ``dst_dir`` with the source folder's
+        # basename preserved as the top-level directory — same as
+        # ``rsync src dst/``.
+        dst_root = (_coerce_path(dst_dir) / src_root.name).resolve()
+        dst_root.mkdir(parents=True, exist_ok=True)
 
     converter = resolve_backend(backend)
     if not converter.is_available():
@@ -274,13 +321,23 @@ def convert_directory(
 
     def _convert_one(abs_path: str, rel_path: str) -> ConversionResult:
         src = Path(abs_path)
-        target_dir = (dst_root / Path(rel_path).parent).resolve()
-        _ensure_within(dst_root, target_dir)
-        target_dir.mkdir(parents=True, exist_ok=True)
-        dst = target_dir / f"{src.stem}.xlsx"
+        if dst_dir is None:
+            dst = dst_root / f"{src.stem}.xlsx"
+        else:
+            target_dir = (dst_root / Path(rel_path).parent).resolve()
+            _ensure_within(dst_root, target_dir)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            dst = target_dir / f"{src.stem}.xlsx"
+        # Resume semantics: an already-produced output is skipped, not
+        # re-converted and not an error. Pass --overwrite to force a rebuild.
         if dst.exists() and not overwrite:
-            raise InvalidPathError(f"destination already exists and overwrite=False: {dst!s}")
-        return converter.convert(src, dst, overwrite=overwrite)
+            _LOGGER.debug("skip (output exists): %s", dst)
+            return _skipped_result(src, dst, converter.name)
+        try:
+            return converter.convert(src, dst, overwrite=overwrite)
+        except ConvertXlsError as exc:
+            _LOGGER.debug("failed: %s: %s", src, exc)
+            return _failed_result(src, dst, converter.name, exc)
 
     if workers <= 1:
         return [_convert_one(abs_path, rel_path) for abs_path, rel_path in discovered.files]

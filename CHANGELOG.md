@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plugin) and `JAVA_TOOL_OPTIONS=-Xmx512m` (capped JRE heap) plus
   `--nologo --nofirststartwizard --nodefault`. The `Dockerfile` bakes the
   same two env vars in for every entrypoint.
+- **Batch runs resume instead of erroring on existing outputs, and continue
+  past per-file failures.** `convert_directory` now skips outputs that
+  already exist (a re-run on a partial batch no longer raises
+  `destination already exists`); pass `--overwrite` to force a rebuild. A
+  per-file `ConvertXlsError` during a batch is recorded as a failed
+  `ConversionResult` so the rest of the batch keeps going, and failures are
+  reported to stderr at the end with the run exiting `1`. Excel
+  owner/lock files (`~$...`, `.~lock.`) are filtered at discovery so they
+  never reach the converter.
 
 ## [0.1.0] - 2026-08-07
 

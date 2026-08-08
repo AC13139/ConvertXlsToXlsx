@@ -54,6 +54,24 @@ def _patched_converters(monkeypatch: pytest.MonkeyPatch) -> _FakeConverter:
     return fake
 
 
+class _FailingConverter(_FakeConverter):
+    """Fake backend that fails for a chosen source file and succeeds elsewhere."""
+
+    def __init__(self, failing_name: str) -> None:
+        super().__init__()
+        self.failing_name = failing_name
+
+    def convert(self, src: Path, dst: Path, *, overwrite: bool) -> ConversionResult:
+        self.calls.append((src, dst, overwrite))
+        if src.name == self.failing_name:
+            from convertxls.exceptions import ConversionFailedError
+
+            raise ConversionFailedError(
+                backend=self.name, src=str(src), return_code=1, stderr="boom"
+            )
+        return super().convert(src, dst, overwrite=overwrite)
+
+
 def test_convert_file_writes_alongside_source_when_no_dst(
     monkeypatch: pytest.MonkeyPatch,
     tmp_xls: Path,
@@ -192,9 +210,91 @@ def test_discover_xls_files_skips_symlinks_and_sorts(
     assert rels == sorted(rels)
 
 
-def test_discover_xls_files_raises_on_missing_dir(tmp_path: Path) -> None:
-    with pytest.raises(InvalidPathError):
-        discover_xls_files(tmp_path / "does-not-exist")
+def test_discover_xls_files_skips_lock_and_temp_files(
+    tmp_path: Path,
+) -> None:
+    """Excel owner files (``~$``) and LibreOffice lock files are not spreadsheets."""
+    for name in (
+        "~$book.xls",
+        "~$化学知识点归纳汇总.xls",
+        ".~lock.real.xls#",
+        "real.xls",
+    ):
+        (tmp_path / name).write_bytes(b"x")
+
+    discovered = discover_xls_files(tmp_path)
+    rels = [rel for _abs, rel in discovered.files]
+    assert rels == ["real.xls"]
+
+
+def test_convert_directory_resumes_by_skipping_existing_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+    xls_dir: Path,
+    tmp_path: Path,
+) -> None:
+    """Re-running a directory scan must not fail on already-converted outputs."""
+    fake = _patched_converters(monkeypatch)
+    dst = tmp_path / "modern"
+
+    # First run converts everything.
+    first = convert_directory(xls_dir, dst, workers=2)
+    assert len(first) == 3
+    assert all(r.ok and not r.skipped for r in first)
+    assert len(fake.calls) == 3
+
+    # Second run: all outputs already exist -> everything is skipped.
+    second = convert_directory(xls_dir, dst, workers=2)
+    assert len(second) == 3
+    assert all(r.skipped for r in second)
+    assert len(fake.calls) == 3  # no new conversion attempts
+
+    # With overwrite=True the files are re-converted instead.
+    third = convert_directory(xls_dir, dst, workers=2, overwrite=True)
+    assert all(r.ok and not r.skipped for r in third)
+    assert len(fake.calls) == 6
+
+
+def test_convert_directory_continues_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    xls_dir: Path,
+    tmp_path: Path,
+) -> None:
+    """A failing file must not stop the rest of the batch."""
+    failing = _FailingConverter("b.xls")
+    monkeypatch.setattr("convertxls.core.resolve_backend", lambda name=None: failing)
+    dst = tmp_path / "modern"
+
+    results = convert_directory(xls_dir, dst, workers=2)
+
+    by_name = {r.src.name: r for r in results}
+    assert by_name["a.xls"].ok
+    assert by_name["c.xls"].ok
+    assert not by_name["b.xls"].ok
+    assert by_name["b.xls"].return_code == 1
+    assert "boom" in by_name["b.xls"].stderr
+    # The other two outputs still got written.
+    assert by_name["a.xls"].dst.exists()
+    assert by_name["c.xls"].dst.exists()
+
+
+def test_convert_many_continues_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    xls_dir: Path,
+    tmp_path: Path,
+) -> None:
+    """convert_many also records a per-file failure instead of aborting."""
+    failing = _FailingConverter("b.xls")
+    monkeypatch.setattr("convertxls.core.resolve_backend", lambda name=None: failing)
+    files = [str(p) for p in sorted(xls_dir.rglob("*.xls"))]
+    out_dir = tmp_path / "modern"
+
+    results = convert_many(files, out_dir=out_dir, workers=2)
+
+    by_name = {r.src.name: r for r in results}
+    assert len(results) == 3
+    assert by_name["a.xls"].ok
+    assert by_name["c.xls"].ok
+    assert not by_name["b.xls"].ok
 
 
 @patch("convertxls.core.REGISTRY")

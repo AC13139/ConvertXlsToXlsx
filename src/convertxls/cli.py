@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import DEFAULT_BACKEND, DEFAULT_WORKERS
-from .converters import REGISTRY
+from .converters import REGISTRY, ConversionResult
 from .core import (
     convert_directory,
     convert_file,
@@ -112,6 +112,25 @@ def _validate_args(args: argparse.Namespace) -> str | None:
     return None
 
 
+def _report_results(results: list[ConversionResult]) -> int:
+    """Print batch results and return the process exit code.
+
+    Skipped files (output already existed on a resume run) print a ``skipped``
+    line and do not fail the run. Failed conversions print a ``FAILED`` line to
+    stderr; the run exits :data:`EXIT_CONVERSION` when any file failed.
+    """
+    failures = [r for r in results if not r.ok]
+    for r in results:
+        if getattr(r, "skipped", False):
+            print(f"skipped\t{r.src}\t->\t{r.dst}\t(output exists)")
+        else:
+            print(f"{r.backend}\t{r.src}\t->\t{r.dst}\t{r.duration_ms}ms")
+    for r in failures:
+        detail = r.stderr if r.stderr else "conversion failed"
+        print(f"convertxls: FAILED {r.src}: {detail}", file=sys.stderr)
+    return EXIT_OK if not failures else EXIT_CONVERSION
+
+
 def _print_list_backends() -> None:
     infos = REGISTRY.info()
     if not infos:
@@ -153,10 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 workers=args.workers,
                 verbose=args.verbose,
             )
-            failures = [r for r in results if not r.ok]
-            for r in results:
-                print(f"{r.backend}\t{r.src}\t->\t{r.dst}\t{r.duration_ms}ms")
-            return EXIT_OK if not failures else EXIT_CONVERSION
+            return _report_results(results)
 
         # Single-file mode (one positional, no --out-dir)
         if len(args.files) == 1 and args.out_dir is None:
@@ -184,10 +200,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             workers=args.workers,
             verbose=args.verbose,
         )
-        failures = [r for r in results if not r.ok]
-        for r in results:
-            print(f"{r.backend}\t{r.src}\t->\t{r.dst}\t{r.duration_ms}ms")
-        return EXIT_OK if not failures else EXIT_CONVERSION
+        return _report_results(results)
 
     except ConvertXlsError as exc:
         print(f"convertxls: {exc}", file=sys.stderr)
