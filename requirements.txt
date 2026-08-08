@@ -1,0 +1,6 @@
+# Runtime dependencies for ConvertXlsToXlsx.
+#
+# As of 0.1.0 the package depends only on the Python standard library
+# plus the LibreOffice converter binary (soffice).
+# This file is intentionally empty so that ``pip install convertxls``
+# does not pull in unnecessary third-party packages.

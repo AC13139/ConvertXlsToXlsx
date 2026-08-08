@@ -1,0 +1,45 @@
+# Build context exclusions for `docker build`. Mirrors .gitignore plus a few
+# Docker-specific entries to keep the build context small.
+
+# ---- VCS ----
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# ---- Project docs that don't ship in the image ----
+docs/
+examples/
+scripts/
+tests/
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+SECURITY.md
+
+# ---- Editor / IDE / OS ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- Python artifacts ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+htmlcov/
+.venv/
+.coverage
+.coverage.*
+coverage.xml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright_cache/
+
+# ---- Real test fixtures and outputs (would leak via COPY) ----
+tests/fixtures/real/
+out/

@@ -1,0 +1,133 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "convertxls"
+version = "0.1.0"
+description = "Convert legacy Microsoft Excel .xls files into modern .xlsx files."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+  { name = "ConvertXlsToXlsx contributors" },
+]
+keywords = ["xls", "xlsx", "converter", "libreoffice", "spreadsheet", "excel"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Office/Business",
+  "Topic :: Utilities",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/AC13139/ConvertXlsToXlsx"
+Issues = "https://github.com/AC13139/ConvertXlsToXlsx/issues"
+Source = "https://github.com/AC13139/ConvertXlsToXlsx"
+
+[project.scripts]
+convertxls = "convertxls.cli:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "coverage[toml]>=7",
+  "types-setuptools>=68",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+convertxls = ["py.typed"]
+
+# ---- ruff ----
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "UP",  # pyupgrade
+  "SIM", # flake8-simplify
+  "RUF", # ruff-specific
+]
+ignore = [
+  "E501",   # line length is enforced by formatter
+  "B008",   # function-call-in-default-arg is fine for our test patterns
+  "SIM108", # we sometimes prefer explicit branches
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011"]  # asserts are fine
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---- mypy ----
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_optional = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# ---- pytest ----
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = [
+  "-ra",
+  "--strict-markers",
+  "--strict-config",
+  "--cov=convertxls",
+  "--cov-report=term-missing",
+  "--cov-report=html",
+]
+testpaths = ["tests"]
+markers = [
+  "integration: marks tests that need an external converter binary (deselect with '-m \"not integration\"').",
+]
+
+# ---- coverage ----
+[tool.coverage.run]
+branch = true
+source = ["src/convertxls"]
+omit = ["*/tests/*", "*/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 0  # placeholder — bump when we have realistic coverage targets
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+]

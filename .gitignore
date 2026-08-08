@@ -1,0 +1,76 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+*.egg
+MANIFEST
+
+# ---- Virtual environments ----
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ---- Test / coverage ----
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.pyright_cache/
+
+# Real-document fixtures and conversion outputs (never committed — may be
+# proprietary or sensitive). See tests/integration/test_real_docs.py for the
+# harness that consumes them.
+tests/fixtures/real/
+out/
+
+# ---- Distribution / build artifacts ----
+dist/
+build/
+*.spec
+
+# ---- IDE / editor ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*.swo
+*~
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Secrets (must never be committed) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Project-local overrides ----
+.claude/
+.claude/settings.local.json

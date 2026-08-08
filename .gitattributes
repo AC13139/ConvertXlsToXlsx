@@ -1,0 +1,21 @@
+* text=auto eol=lf
+
+# Force LF for shell scripts regardless of platform
+*.sh   text eol=lf
+*.py   text eol=lf
+*.md   text eol=lf
+
+# Mark test directories so GitHub linguists them as test code
+tests/** linguist-documentation=false
+tests/** linguist-vendored=false
+
+# Exclude noise from GitHub stats
+docs/**          export-ignore
+examples/**      export-ignore
+scripts/**       export-ignore
+.github/**       export-ignore
+CHANGELOG.md     export-ignore
+CODE_OF_CONDUCT.md export-ignore
+SECURITY.md      export-ignore
+CONTRIBUTING.md  export-ignore
+Makefile         export-ignore

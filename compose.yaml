@@ -1,0 +1,26 @@
+# Docker Compose recipe for ConvertXlsToXlsx — runs the published multi-arch
+# image (ac13139/xls2xlsx:latest) with no local Python or LibreOffice install.
+#
+# Quick start:
+#   cp .env.example .env     # point XLS_SRC_DIR / XLS_OUT_DIR at your folders
+#   docker compose up        # converts ./docs -> ./out with ${WORKERS} workers
+#
+# Or run ad-hoc commands against the image:
+#   docker compose run --rm convertxls --list-backends
+#
+# The image is multi-arch (linux/amd64 + linux/arm64); Compose pulls the
+# platform matching your host automatically.
+
+services:
+  convertxls:
+    image: ac13139/xls2xlsx:latest
+    command:
+      - --src-dir
+      - /data
+      - --dst-dir
+      - /out
+      - --workers
+      - "${WORKERS:-4}"
+    volumes:
+      - "${XLS_SRC_DIR:-./docs}:/data"
+      - "${XLS_OUT_DIR:-./out}:/out"
