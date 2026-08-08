@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Transient LibreOffice crashes no longer kill a batch.** A memory-starved
+  `soffice` can abort with a SIGABRT (`WrappedTargetRuntimeException` /
+  `return_code=134` — signal death surfaces as a negative code in
+  `subprocess` or `128 + signal` through the launcher wrapper) on an
+  otherwise-convertible file. `LibreOfficeConverter` now retries once with a
+  fresh user profile on a crash (or on a successful exit that produced no
+  output), while deterministic nonzero exits still fail fast. Every
+  invocation also runs hardened: `SAL_USE_VCLPLUGIN=svp` (headless VCL
+  plugin) and `JAVA_TOOL_OPTIONS=-Xmx512m` (capped JRE heap) plus
+  `--nologo --nofirststartwizard --nodefault`. The `Dockerfile` bakes the
+  same two env vars in for every entrypoint.
+
 ## [0.1.0] - 2026-08-07
 
 ### Added

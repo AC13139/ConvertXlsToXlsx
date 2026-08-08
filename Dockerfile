@@ -39,6 +39,15 @@ RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
+# Robustness hardening for LibreOffice headless under memory pressure:
+#   - SAL_USE_VCLPLUGIN=svp  pin the headless VCL plugin (no GUI/Gtk to crash on)
+#   - JAVA_TOOL_OPTIONS=-Xmx512m  cap the JRE heap so a memory-starved JVM
+#     cannot abort the parent soffice process mid-conversion (the "return_code
+#     =134 / WrappedTargetRuntimeException" crash mode). The converter also
+#     sets these per-process, but baking them in protects every entrypoint.
+ENV SAL_USE_VCLPLUGIN=svp
+ENV JAVA_TOOL_OPTIONS=-Xmx512m
+
 # Install convertxls from the local source. ``pip install .`` reads the
 # project layout from /src and installs the package + all entrypoints.
 WORKDIR /src
